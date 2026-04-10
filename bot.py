@@ -23,7 +23,7 @@ TOKEN = "8687358511:AAFwehDnQYIkT-lLKIsXTvz6MrhsBP7VfLQ"
 
 # --- GOOGLE SHEETS ---
 
-lock = threading.Lock()
+
 
 # --- КНОПКИ ---
 def main_keyboard():
