@@ -2,7 +2,8 @@ import os
 import json
 import gspread
 from google.oauth2.service_account import Credentials
-
+from telegram import Update
+from telegram.ext import ContextTypes
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
