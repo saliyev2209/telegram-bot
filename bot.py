@@ -26,28 +26,51 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
 client = gspread.authorize(creds)
 sheet = client.open_by_url(SHEET_URL).worksheet(SHEET_NAME)
+# FINDING =====
+def find_product(text):
+    data = sheet.get_all_values()
 
-def find_product(code):
-    data = sheet.get_all_values()  # вместо get_all_records()
+    headers = data[0]
+    rows = data[1:]
 
-    headers = data[0]  # первая строка (названия колонок)
-    rows = data[1:]    # все данные
-
-    # находим индексы колонок вручную
     model_idx = headers.index("Модель")
     size_idx = headers.index("Размер")
     color_idx = headers.index("Цвет")
     stock_idx = headers.index("Количество")
     sklad_idx = headers.index("Склад")
+    st_idx = headers.index("Стеллаж")
+    shelf_idx = headers.index("Полка")
+    box_idx = headers.index("Коробка")
+
+    parts = text.upper().split()
+
+    model = None
+    size = None
+    color = None
+
+    for p in parts:
+        if "MK" in p:
+            model = p
+        elif p.isdigit():
+            size = p
+        else:
+            color = p
 
     for row in rows:
-        if row[model_idx].lower() == code.lower():
+        if (
+            (not model or row[model_idx].upper() == model) and
+            (not size or row[size_idx] == size) and
+            (not color or row[color_idx].upper() == color)
+        ):
             return {
                 "model": row[model_idx],
                 "size": row[size_idx],
                 "color": row[color_idx],
+                "stock": row[stock_idx],
                 "sklad": row[sklad_idx],
-                "stock": row[stock_idx]
+                "st": row[st_idx],
+                "shelf": row[shelf_idx],
+                "box": row[box_idx]
             }
 
     return None
@@ -59,11 +82,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product = find_product(text)
 
     if product:
-        response = (
-            f"{product['model']} | {product['size']} | {product['color']}\n"
-            f"Склад: {product['sklad']}\n"
-            f"Остаток: {product['stock']}"
-        )
+  response = (
+    f"{product['model']} | {product['size']} | {product['color']}\n"
+    f"Склад: {product['sklad']}\n"
+    f"Остаток: {product['stock']}\n"
+    f"Стеллаж: {product['st']} | Полка: {product['shelf']} | Коробка: {product['box']}"
+)
     else:
         response = "Товар не найден"
 
