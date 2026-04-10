@@ -108,30 +108,36 @@ def create_buttons(products):
     return InlineKeyboardMarkup(keyboard)
 
 # ====== ОБРАБОТКА СООБЩЕНИЙ ======
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
+async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-    model, products = find_products(text)
+    row_index = int(query.data)
 
-    if not products:
-        await update.message.reply_text("Товар не найден")
-        return
+    headers, rows = get_data()
 
-    # если много вариантов → кнопки
-    if len(products) > 1:
-        await update.message.reply_text(
-            f"{model} найдено. Выберите:",
-            reply_markup=create_buttons(products)
-        )
-    else:
-        p = products[0]
-        response = (
-            f"{p['model']} | {p['size']} | {p['color']}\n"
-            f"Склад: {p['sklad']}\n"
-            f"Остаток: {p['stock']}\n"
-            f"📦 Стеллаж: {p['st']} | Полка: {p['shelf']} | Коробка: {p['box']}"
-        )
-        await update.message.reply_text(response)
+    # получаем индексы колонок
+    model_idx = get_index(headers, "Модель")
+    size_idx = get_index(headers, "Размер")
+    color_idx = get_index(headers, "Цвет")
+    stock_idx = get_index(headers, "Количество")
+    sklad_idx = get_index(headers, "Склад")
+    st_idx = get_index(headers, "Стеллаж")
+    shelf_idx = get_index(headers, "Полка")
+    box_idx = get_index(headers, "Коробка")
+
+    row = rows[row_index - 2]
+
+    response = (
+        f"{row[model_idx]} | {row[size_idx]} | {row[color_idx]}\n"
+        f"Склад: {row[sklad_idx]}\n"
+        f"Остаток: {row[stock_idx]}\n"
+        f"📦 Стеллаж: {row[st_idx] if st_idx is not None else '-'} | "
+        f"Полка: {row[shelf_idx] if shelf_idx is not None else '-'} | "
+        f"Коробка: {row[box_idx] if box_idx is not None else '-'}"
+    )
+
+    await query.message.reply_text(response)
 
 # ====== ОБРАБОТКА КНОПОК ======
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
