@@ -4,6 +4,15 @@ import gspread
 from google.oauth2.service_account import Credentials
 from telegram import Update
 from telegram.ext import ContextTypes
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import (
+    ApplicationBuilder,
+    MessageHandler,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters
+)
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
