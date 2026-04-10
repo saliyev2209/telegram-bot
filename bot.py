@@ -37,7 +37,7 @@ client = gspread.authorize(creds)
 
 sheet = client.open_by_url(
     "https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio"
-).worksheet("Основные")
+).worksheet("местоположение товаров")
 
 
 # --- КНОПКИ ---
