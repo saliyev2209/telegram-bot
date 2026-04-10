@@ -1,4 +1,7 @@
 
+
+
+
 import os
 import json
 import gspread
@@ -12,14 +15,14 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ====== НАСТРОЙКИ ======
+# ===== НАСТРОЙКИ =====
 TELEGRAM_TOKEN = "8687358511:AAEK_TXPOcLCO6Chk6eCcJB3uf4SestnXPM"
 ADMIN_ID = 636437015  # вставь свой Telegram ID
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio/edit"
 SHEET_NAME = "местоположение товаров"
 
-# ====== GOOGLE ======
+# ===== GOOGLE =====
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
@@ -31,20 +34,18 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 sheet = client.open_by_url(SHEET_URL).worksheet(SHEET_NAME)
 
-# ====== ВСПОМОГАТЕЛЬНОЕ ======
+# ===== ВСПОМОГАТЕЛЬНОЕ =====
+def get_data():
+    data = sheet.get_all_values()
+    return data[0], data[1:]
+
 def get_index(headers, name):
     for i, h in enumerate(headers):
         if h.strip().lower() == name.lower():
             return i
     return None
 
-def get_data():
-    data = sheet.get_all_values()
-    headers = data[0]
-    rows = data[1:]
-    return headers, rows
-
-# ====== ПОИСК ======
+# ===== ПОИСК =====
 def find_products(text):
     headers, rows = get_data()
 
@@ -88,35 +89,96 @@ def find_products(text):
             "color": row[color_idx],
             "stock": row[stock_idx],
             "sklad": row[sklad_idx],
-            "st": row[st_idx] if st_idx and row[st_idx] else "-",
-            "shelf": row[shelf_idx] if shelf_idx and row[shelf_idx] else "-",
-            "box": row[box_idx] if box_idx and row[box_idx] else "-"
+            "st": row[st_idx] if st_idx is not None and row[st_idx] else "-",
+            "shelf": row[shelf_idx] if shelf_idx is not None and row[shelf_idx] else "-",
+            "box": row[box_idx] if box_idx is not None and row[box_idx] else "-"
         })
 
     return model, results
 
-# ====== КНОПКИ ======
+# ===== КНОПКИ =====
 def create_buttons(products):
     keyboard = []
     for p in products:
         keyboard.append([
             InlineKeyboardButton(
                 text=f"{p['size']} ({p['stock']})",
-                callback_data=f"{p['row_index']}"
+                callback_data=f"view_{p['row_index']}"
             )
         ])
     return InlineKeyboardMarkup(keyboard)
 
-# ====== ОБРАБОТКА СООБЩЕНИЙ ======
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def create_action_buttons(row_index, is_admin):
+    buttons = []
+
+    if is_admin:
+        buttons.append([
+            InlineKeyboardButton(
+                text="➖ Списать 1",
+                callback_data=f"minus_{row_index}"
+            )
+        ])
+
+    return InlineKeyboardMarkup(buttons) if buttons else None
+
+# ===== ОБРАБОТКА СООБЩЕНИЙ =====
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+
+    # ===== СПИСАНИЕ ЧЕРЕЗ ТЕКСТ =====
+    if update.message.from_user.id == ADMIN_ID and text.startswith("-"):
+        model, products = find_products(text[1:].strip())
+
+        if products:
+            p = products[0]
+            headers, _ = get_data()
+            stock_idx = get_index(headers, "Количество")
+
+            current = int(sheet.cell(p["row_index"], stock_idx + 1).value)
+            sheet.update_cell(p["row_index"], stock_idx + 1, current - 1)
+
+            await update.message.reply_text("Списано ✅")
+        return
+
+    # ===== ПОИСК =====
+    model, products = find_products(text)
+
+    if not products:
+        await update.message.reply_text("Товар не найден")
+        return
+
+    if len(products) > 1:
+        await update.message.reply_text(
+            f"{model} найдено. Выберите:",
+            reply_markup=create_buttons(products)
+        )
+    else:
+        p = products[0]
+
+        text = (
+            f"{p['model']} | {p['size']} | {p['color']}\n"
+            f"Склад: {p['sklad']}\n"
+            f"Остаток: {p['stock']}\n"
+            f"📦 Стеллаж: {p['st']} | Полка: {p['shelf']} | Коробка: {p['box']}"
+        )
+
+        await update.message.reply_text(
+            text,
+            reply_markup=create_action_buttons(
+                p["row_index"],
+                update.message.from_user.id == ADMIN_ID
+            )
+        )
+
+# ===== ОБРАБОТКА КНОПОК =====
+async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    row_index = int(query.data)
+    data = query.data
 
     headers, rows = get_data()
 
-    # получаем индексы колонок
     model_idx = get_index(headers, "Модель")
     size_idx = get_index(headers, "Размер")
     color_idx = get_index(headers, "Цвет")
@@ -126,65 +188,48 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     shelf_idx = get_index(headers, "Полка")
     box_idx = get_index(headers, "Коробка")
 
-    row = rows[row_index - 2]
+    # ===== ПРОСМОТР =====
+    if data.startswith("view_"):
+        row_index = int(data.split("_")[1])
+        row = rows[row_index - 2]
 
-    response = (
-        f"{row[model_idx]} | {row[size_idx]} | {row[color_idx]}\n"
-        f"Склад: {row[sklad_idx]}\n"
-        f"Остаток: {row[stock_idx]}\n"
-        f"📦 Стеллаж: {row[st_idx] if st_idx is not None else '-'} | "
-        f"Полка: {row[shelf_idx] if shelf_idx is not None else '-'} | "
-        f"Коробка: {row[box_idx] if box_idx is not None else '-'}"
-    )
+        text = (
+            f"{row[model_idx]} | {row[size_idx]} | {row[color_idx]}\n"
+            f"Склад: {row[sklad_idx]}\n"
+            f"Остаток: {row[stock_idx]}\n"
+            f"📦 Стеллаж: {row[st_idx] if st_idx else '-'} | "
+            f"Полка: {row[shelf_idx] if shelf_idx else '-'} | "
+            f"Коробка: {row[box_idx] if box_idx else '-'}"
+        )
 
-    await query.message.reply_text(response)
+        await query.message.reply_text(
+            text,
+            reply_markup=create_action_buttons(
+                row_index,
+                query.from_user.id == ADMIN_ID
+            )
+        )
 
-# ====== ОБРАБОТКА КНОПОК ======
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    # ===== СПИСАНИЕ =====
+    if data.startswith("minus_"):
+        if query.from_user.id != ADMIN_ID:
+            return
 
-    row_index = int(query.data)
+        row_index = int(data.split("_")[1])
 
-    headers, rows = get_data()
+        stock_idx = get_index(headers, "Количество")
+        current = int(sheet.cell(row_index, stock_idx + 1).value)
 
-    stock_idx = get_index(headers, "Количество")
+        if current > 0:
+            sheet.update_cell(row_index, stock_idx + 1, current - 1)
 
-    row = rows[row_index - 2]
+        await query.message.reply_text("Списано 1 ✅")
 
-    response = (
-        f"{row[0]} | {row[1]} | {row[2]}\n"
-        f"Склад: {row[4]}\n"
-        f"Остаток: {row[3]}"
-    )
-
-    await query.message.reply_text(response)
-
-# ====== СПИСАНИЕ (только админ) ======
-async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id != ADMIN_ID:
-        return
-
-    text = update.message.text.strip()
-
-    if text.startswith("-"):
-        model, products = find_products(text[1:].strip())
-
-        if products:
-            p = products[0]
-            stock_idx = get_index(sheet.row_values(1), "Количество")
-
-            current = int(sheet.cell(p["row_index"], stock_idx + 1).value)
-            sheet.update_cell(p["row_index"], stock_idx + 1, current - 1)
-
-            await update.message.reply_text("Списано ✅")
-
-# ====== ЗАПУСК ======
+# ===== ЗАПУСК =====
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-app.add_handler(CallbackQueryHandler(handle_button))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin))
+app.add_handler(CallbackQueryHandler(handle_buttons))
 
 print("Бот запущен...")
 app.run_polling()
