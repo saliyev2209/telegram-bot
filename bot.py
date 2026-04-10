@@ -21,7 +21,7 @@ from telegram.ext import (
     filters
 )
 
-TOKEN = "8687358511:AAGAbB9twv3hhbM6qWgqCda5cDfdS2lhsRA"
+TOKEN = "8687358511:AAE6AgK-0-bh2HUPqIz9-3U31T_cG_Tf8l4"
 
 # --- GOOGLE SHEETS ---
 scope = [
