@@ -17,7 +17,7 @@ from telegram.ext import (
     ContextTypes,
     filters
 )
-TOKEN = "8687358511:AAFwehDnQYIkT-lLKIsXTvz6MrhsBP7VfLQ"
+TOKEN = "8687358511:AAGAbB9twv3hhbM6qWgqCda5cDfdS2lhsRA"
 # --- GOOGLE SHEETS ---
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
