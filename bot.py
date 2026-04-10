@@ -44,6 +44,9 @@ def find_products(text):
     color_idx = get_index(headers, "Цвет")
     stock_idx = get_index(headers, "Количество")
     sklad_idx = get_index(headers, "Склад")
+    st_idx = get_index(headers, "Стеллаж")
+shelf_idx = get_index(headers, "Полка")
+box_idx = get_index(headers, "Коробка")
 
     parts = text.upper().split()
 
@@ -74,6 +77,9 @@ def find_products(text):
             "color": row[color_idx],
             "stock": row[stock_idx],
             "sklad": row[sklad_idx]
+            "st": row[st_idx] if st_idx is not None and row[st_idx] else "-",
+    "shelf": row[shelf_idx] if shelf_idx is not None and row[shelf_idx] else "-",
+    "box": row[box_idx] if box_idx is not None and row[box_idx] else "-"
         })
 
     return model, results
@@ -88,9 +94,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = f"{model} найдено:\n\n"
 
         for p in products:
-            response += (
-                f"{p['size']} | {p['color']} | Остаток: {p['stock']} | {p['sklad']}\n"
-            )
+        response += (
+    f"{p['size']} | {p['color']} | Остаток: {p['stock']} | {p['sklad']}\n"
+    f"📦 Стеллаж: {p['st']} | Полка: {p['shelf']} | Коробка: {p['box']}\n\n"
+)
 
     else:
         response = "Товар не найден"
