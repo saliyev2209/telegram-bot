@@ -5,7 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
-
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 # ==== TOKEN ====
 TELEGRAM_TOKEN = "8687358511:AAEK_TXPOcLCO6Chk6eCcJB3uf4SestnXPM"
 
@@ -24,7 +24,19 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
 client = gspread.authorize(creds)
 sheet = client.open_by_url(SHEET_URL).worksheet(SHEET_NAME)
+# ==== BUTTONS ===
+def create_size_buttons(products):
+    buttons = []
 
+    for p in products:
+        buttons.append([
+            InlineKeyboardButton(
+                text=p["size"],
+                callback_data=f"{p['size']}_{p['color']}"
+            )
+        ])
+
+    return InlineKeyboardMarkup(buttons)
 # ==== ПОИСК ====
 def find_products(text):
     data = sheet.get_all_values()
@@ -101,6 +113,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = "Товар не найден"
 
     await update.message.reply_text(response)
+    
+    await update.message.reply_text(
+    "Выберите размер:",
+    reply_markup=create_size_buttons(products)
+)
 
 # ==== RUN ====
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
