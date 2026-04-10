@@ -18,9 +18,11 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-client = gspread.authorize(creds)
+# берем credentials из Railway Variables
+creds_dict = json.loads(os.environ["GOOGLE_CREDS"])
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
+client = gspread.authorize(creds)
 sheet = client.open_by_url(SHEET_URL).worksheet(SHEET_NAME)
 
 def find_product(code):
