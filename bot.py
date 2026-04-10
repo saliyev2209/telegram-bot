@@ -1,31 +1,27 @@
-
-
-
-
-
-
-
-
-import logging
-import threading
+import os
+import json
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, filters, ContextTypes
+from google.oauth2.service_account import Credentials
+
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+creds_dict = json.loads(os.getenv("GOOGLE_CREDS"))
+
+creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+
+client = gspread.authorize(creds)
+
+sheet_main = client.open_by_url("https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio").worksheet("Основные")
+sheet_sales = client.open_by_url("https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio").worksheet("Продажи")
+
+
 
 TOKEN = "8687358511:AAFwehDnQYIkT-lLKIsXTvz6MrhsBP7VfLQ"
 
 # --- GOOGLE SHEETS ---
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-]
-
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-client = gspread.authorize(creds)
-
-sheet_main = client.open_by_url("https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio/edit")
-sheet_sales = client.open_by_url("https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio/edit")
 
 lock = threading.Lock()
 
