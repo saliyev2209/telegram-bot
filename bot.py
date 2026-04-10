@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
 # ==== ВСТАВЬТЕ СВОЙ ТОКЕН ====
-TELEGRAM_TOKEN = "8687358511:AAGJZF0LihKNTFg6-OXSLRXS6eHBvkNOLw4"
+TELEGRAM_TOKEN = "8687358511:AAEK_TXPOcLCO6Chk6eCcJB3uf4SestnXPM"
 
 # ==== ССЫЛКА НА GOOGLE SHEET ====
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio/edit?usp=sharing"
