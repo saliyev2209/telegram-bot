@@ -82,12 +82,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product = find_product(text)
 
     if product:
-  response = (
-    f"{product['model']} | {product['size']} | {product['color']}\n"
-    f"Склад: {product['sklad']}\n"
-    f"Остаток: {product['stock']}\n"
-    f"Стеллаж: {product['st']} | Полка: {product['shelf']} | Коробка: {product['box']}"
-)
+        response = (
+            f"{product['model']} | {product['size']} | {product['color']}\n"
+            f"Склад: {product['sklad']}\n"
+            f"Остаток: {product['stock']}\n"
+            f"Стеллаж: {product['st']} | Полка: {product['shelf']} | Коробка: {product['box']}"
+        )
     else:
         response = "Товар не найден"
 
