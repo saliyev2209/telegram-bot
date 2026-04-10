@@ -16,7 +16,7 @@ from telegram.ext import (
 )
 
 # ===== НАСТРОЙКИ =====
-TELEGRAM_TOKEN = "8687358511:AAEK_TXPOcLCO6Chk6eCcJB3uf4SestnXPM"
+TELEGRAM_TOKEN = "8687358511:AAFwehDnQYIkT-lLKIsXTvz6MrhsBP7VfLQ"
 ADMIN_ID = 636437015  # вставь свой Telegram ID
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio/edit"
