@@ -1,6 +1,8 @@
 
 
 
+
+
 import os
 import json
 import gspread
@@ -38,7 +40,7 @@ sheet = client.open_by_url(
 ).worksheet("Основные")
 
 
-# --- УМНОЕ ОПРЕДЕЛЕНИЕ КОЛОНОК ---
+# --- УМНОЕ ОПРЕДЕЛЕНИЕ КОЛОНОК (С ЗАЩИТОЙ) ---
 def get_columns_map(header):
     col_map = {}
 
@@ -62,7 +64,30 @@ def get_columns_map(header):
         elif "короб" in key:
             col_map["box"] = i
 
-    return col_map
+    # --- ЗАЩИТА ---
+    def safe(key):
+        return col_map.get(key, None)
+
+    return {
+        "model": safe("model"),
+        "size": safe("size"),
+        "color": safe("color"),
+        "qty": safe("qty"),
+        "warehouse": safe("warehouse"),
+        "rack": safe("rack"),
+        "shelf": safe("shelf"),
+        "box": safe("box"),
+    }
+
+
+# --- БЕЗОПАСНОЕ ЧТЕНИЕ ---
+def get_val(row, index):
+    try:
+        if index is None:
+            return "-"
+        return row[index] if row[index] != "" else "-"
+    except:
+        return "-"
 
 
 # --- КНОПКИ ---
@@ -76,27 +101,30 @@ def main_keyboard():
 # --- START ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📦 Складской бот\n\nВыберите действие:",
+        "📦 Складской бот",
         reply_markup=main_keyboard()
     )
 
 
-# --- ВСЕ МОДЕЛИ ---
+# --- ПОКАЗ МОДЕЛЕЙ ---
 async def show_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = [row for row in sheet.get_all_values() if any(row)]
+    data = sheet.get_all_values()
     header = data[0]
     col = get_columns_map(header)
 
-    models = sorted(set(row[col["model"]] for row in data[1:] if row))
+    models = sorted(set(
+        get_val(row, col["model"])
+        for row in data[1:]
+    ))
 
     keyboard = [
         [InlineKeyboardButton(m, callback_data=f"model_{m}")]
-        for m in models[:20]
+        for m in models if m != "-"
     ]
 
     await update.message.reply_text(
         "Выберите модель:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard[:20])
     )
 
 
@@ -109,19 +137,18 @@ async def select_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["model"] = model
 
     data = sheet.get_all_values()
-    header = data[0]
-    col = get_columns_map(header)
+    col = get_columns_map(data[0])
 
     sizes = sorted(set(
-        str(row[col["size"]])
+        get_val(row, col["size"])
         for row in data[1:]
-        if row[col["model"]] == model
+        if get_val(row, col["model"]) == model
     ))
 
     keyboard = [[InlineKeyboardButton(s, callback_data=f"size_{s}")] for s in sizes]
 
     await query.edit_message_text(
-        f"Модель: {model}\nВыберите размер:",
+        f"{model}\nВыберите размер:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -136,13 +163,12 @@ async def select_size(update: Update, context: ContextTypes.DEFAULT_TYPE):
     model = context.user_data["model"]
 
     data = sheet.get_all_values()
-    header = data[0]
-    col = get_columns_map(header)
+    col = get_columns_map(data[0])
 
     colors = sorted(set(
-        row[col["color"]]
+        get_val(row, col["color"])
         for row in data[1:]
-        if row[col["model"]] == model and str(row[col["size"]]) == size
+        if get_val(row, col["model"]) == model and get_val(row, col["size"]) == size
     ))
 
     keyboard = [[InlineKeyboardButton(c, callback_data=f"color_{c}")] for c in colors]
@@ -163,22 +189,21 @@ async def select_color(update: Update, context: ContextTypes.DEFAULT_TYPE):
     size = context.user_data["size"]
 
     data = sheet.get_all_values()
-    header = data[0]
-    col = get_columns_map(header)
+    col = get_columns_map(data[0])
 
     for row in data[1:]:
         if (
-            row[col["model"]] == model and
-            str(row[col["size"]]) == size and
-            row[col["color"]] == color
+            get_val(row, col["model"]) == model and
+            get_val(row, col["size"]) == size and
+            get_val(row, col["color"]) == color
         ):
             await query.edit_message_text(
                 f"📦 {model} | {size} | {color}\n"
-                f"📍 Склад: {row[col['warehouse']]}\n"
-                f"🏗 Стеллаж: {row[col['rack']]}\n"
-                f"📚 Полка: {row[col['shelf']]}\n"
-                f"📦 Коробка: {row[col['box']]}\n"
-                f"📊 Остаток: {row[col['qty']]}"
+                f"📍 Склад: {get_val(row, col['warehouse'])}\n"
+                f"🏗 Стеллаж: {get_val(row, col['rack'])}\n"
+                f"📚 Полка: {get_val(row, col['shelf'])}\n"
+                f"📦 Коробка: {get_val(row, col['box'])}\n"
+                f"📊 Остаток: {get_val(row, col['qty'])}"
             )
             return
 
@@ -190,20 +215,19 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower().strip()
     words = text.split()
 
-    data = [row for row in sheet.get_all_values() if any(row)]
-    header = data[0]
-    col = get_columns_map(header)
+    data = sheet.get_all_values()
+    col = get_columns_map(data[0])
 
     results = []
 
     for row in data[1:]:
-        row_text = " ".join(str(cell).lower() for cell in row)
+        row_text = " ".join(str(x).lower() for x in row)
 
         if all(word in row_text for word in words):
             results.append(
-                f"{row[col['model']]} | {row[col['size']]} | {row[col['color']]}\n"
-                f"📍 {row[col['warehouse']]} | Ст:{row[col['rack']]} | П:{row[col['shelf']]} | К:{row[col['box']]}\n"
-                f"📊 Остаток: {row[col['qty']]}"
+                f"{get_val(row, col['model'])} | {get_val(row, col['size'])} | {get_val(row, col['color'])}\n"
+                f"📍 {get_val(row, col['warehouse'])} | Ст:{get_val(row, col['rack'])} | П:{get_val(row, col['shelf'])} | К:{get_val(row, col['box'])}\n"
+                f"📊 Остаток: {get_val(row, col['qty'])}"
             )
 
     if not results:
@@ -217,7 +241,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
     if "Поиск" in text:
-        await update.message.reply_text("Введите запрос (например: MK-68 104 BLACK)")
+        await update.message.reply_text("Введите запрос")
     elif "Все модели" in text:
         await show_models(update, context)
     else:
