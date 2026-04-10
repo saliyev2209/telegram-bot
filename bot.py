@@ -2,234 +2,187 @@
 
 
 
-import os
-import json
+
+
+
+
+import logging
+import threading
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    MessageHandler,
-    CallbackQueryHandler,
-    filters,
-    ContextTypes,
-)
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, filters, ContextTypes
 
-# ===== НАСТРОЙКИ =====
-TELEGRAM_TOKEN = "8687358511:AAFwehDnQYIkT-lLKIsXTvz6MrhsBP7VfLQ"
-ADMIN_ID = 636437015  # вставь свой Telegram ID
+TOKEN = "8687358511:AAFwehDnQYIkT-lLKIsXTvz6MrhsBP7VfLQ"
 
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio/edit"
-SHEET_NAME = "местоположение товаров"
-
-# ===== GOOGLE =====
+# --- GOOGLE SHEETS ---
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds_dict = json.loads(os.environ["GOOGLE_CREDS"])
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-
+creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 client = gspread.authorize(creds)
-sheet = client.open_by_url(SHEET_URL).worksheet(SHEET_NAME)
 
-# ===== ВСПОМОГАТЕЛЬНОЕ =====
-def get_data():
-    data = sheet.get_all_values()
-    return data[0], data[1:]
+sheet_main = client.open_by_url("https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio/edit")
+sheet_sales = client.open_by_url("https://docs.google.com/spreadsheets/d/1M-pnya58Wu37It4bsmRzzxBkcP5e-Zj4FX2lbyMZjio/edit")
 
-def get_index(headers, name):
-    for i, h in enumerate(headers):
-        if h.strip().lower() == name.lower():
-            return i
-    return None
+lock = threading.Lock()
 
-# ===== ПОИСК =====
-def find_products(text):
-    headers, rows = get_data()
+# --- КНОПКИ ---
+def main_keyboard():
+    return ReplyKeyboardMarkup([
+        ["🔍 Поиск товара"],
+        ["📦 Списание"]
+    ], resize_keyboard=True)
 
-    model_idx = get_index(headers, "Модель")
-    size_idx = get_index(headers, "Размер")
-    color_idx = get_index(headers, "Цвет")
-    stock_idx = get_index(headers, "Количество")
-    sklad_idx = get_index(headers, "Склад")
-    st_idx = get_index(headers, "Стеллаж")
-    shelf_idx = get_index(headers, "Полка")
-    box_idx = get_index(headers, "Коробка")
+# --- START ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📦 Складской бот\n\nВыберите действие:",
+        reply_markup=main_keyboard()
+    )
 
-    parts = text.upper().split()
+# --- ПОИСК ---
+async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Введите запрос (например: MK-68 104 BLACK)")
 
-    model = None
-    size = None
-    color = None
+async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.lower().strip()
+    words = text.split()
 
-    for p in parts:
-        if "-" in p:
-            model = p
-        elif p.isdigit():
-            size = p
-        else:
-            color = p
+    data = [row for row in sheet_main.get_all_values() if any(row)]
 
     results = []
 
-    for i, row in enumerate(rows):
-        if model and row[model_idx].upper() != model:
-            continue
-        if size and row[size_idx] != size:
-            continue
-        if color and row[color_idx].upper() != color:
-            continue
+    for i, row in enumerate(data[1:], start=2):
+        row_text = " ".join([str(cell).lower() for cell in row])
 
-        results.append({
-            "row_index": i + 2,
-            "model": row[model_idx],
-            "size": row[size_idx],
-            "color": row[color_idx],
-            "stock": row[stock_idx],
-            "sklad": row[sklad_idx],
-            "st": row[st_idx] if st_idx is not None and row[st_idx] else "-",
-            "shelf": row[shelf_idx] if shelf_idx is not None and row[shelf_idx] else "-",
-            "box": row[box_idx] if box_idx is not None and row[box_idx] else "-"
-        })
+        if all(word in row_text for word in words):
+            results.append((i, row))
 
-    return model, results
+    if not results:
+        await update.message.reply_text("❌ Ничего не найдено")
+        return
 
-# ===== КНОПКИ =====
-def create_buttons(products):
     keyboard = []
-    for p in products:
+    for idx, row in results[:5]:
         keyboard.append([
             InlineKeyboardButton(
-                text=f"{p['size']} ({p['stock']})",
-                callback_data=f"view_{p['row_index']}"
-            )
-        ])
-    return InlineKeyboardMarkup(keyboard)
-
-def create_action_buttons(row_index, is_admin):
-    buttons = []
-
-    if is_admin:
-        buttons.append([
-            InlineKeyboardButton(
-                text="➖ Списать 1",
-                callback_data=f"minus_{row_index}"
+                f"{row[0]} {row[1]} {row[2]}",
+                callback_data=f"select_{idx}"
             )
         ])
 
-    return InlineKeyboardMarkup(buttons) if buttons else None
+    await update.message.reply_text(
+        "Выберите товар:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-# ===== ОБРАБОТКА СООБЩЕНИЙ =====
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-
-    # ===== СПИСАНИЕ ЧЕРЕЗ ТЕКСТ =====
-    if update.message.from_user.id == ADMIN_ID and text.startswith("-"):
-        model, products = find_products(text[1:].strip())
-
-        if products:
-            p = products[0]
-            headers, _ = get_data()
-            stock_idx = get_index(headers, "Количество")
-
-            current = int(sheet.cell(p["row_index"], stock_idx + 1).value)
-            sheet.update_cell(p["row_index"], stock_idx + 1, current - 1)
-
-            await update.message.reply_text("Списано ✅")
-        return
-
-    # ===== ПОИСК =====
-    model, products = find_products(text)
-
-    if not products:
-        await update.message.reply_text("Товар не найден")
-        return
-
-    if len(products) > 1:
-        await update.message.reply_text(
-            f"{model} найдено. Выберите:",
-            reply_markup=create_buttons(products)
-        )
-    else:
-        p = products[0]
-
-        text = (
-            f"{p['model']} | {p['size']} | {p['color']}\n"
-            f"Склад: {p['sklad']}\n"
-            f"Остаток: {p['stock']}\n"
-            f"📦 Стеллаж: {p['st']} | Полка: {p['shelf']} | Коробка: {p['box']}"
-        )
-
-        await update.message.reply_text(
-            text,
-            reply_markup=create_action_buttons(
-                p["row_index"],
-                update.message.from_user.id == ADMIN_ID
-            )
-        )
-
-# ===== ОБРАБОТКА КНОПОК =====
-async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- ВЫБОР ТОВАРА ---
+async def select_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    data = query.data
+    row_index = int(query.data.split("_")[1])
 
-    headers, rows = get_data()
+    data = sheet_main.get_all_values()
+    row = data[row_index - 1]
 
-    model_idx = get_index(headers, "Модель")
-    size_idx = get_index(headers, "Размер")
-    color_idx = get_index(headers, "Цвет")
-    stock_idx = get_index(headers, "Количество")
-    sklad_idx = get_index(headers, "Склад")
-    st_idx = get_index(headers, "Стеллаж")
-    shelf_idx = get_index(headers, "Полка")
-    box_idx = get_index(headers, "Коробка")
+    context.user_data["selected_row"] = row_index
 
-    # ===== ПРОСМОТР =====
-    if data.startswith("view_"):
-        row_index = int(data.split("_")[1])
-        row = rows[row_index - 2]
+    keyboard = [
+        [InlineKeyboardButton("➖ Списать 1", callback_data="sell_1")],
+        [InlineKeyboardButton("➖ Списать 2", callback_data="sell_2")],
+        [InlineKeyboardButton("➖ Списать 5", callback_data="sell_5")]
+    ]
 
-        text = (
-            f"{row[model_idx]} | {row[size_idx]} | {row[color_idx]}\n"
-            f"Склад: {row[sklad_idx]}\n"
-            f"Остаток: {row[stock_idx]}\n"
-            f"📦 Стеллаж: {row[st_idx] if st_idx else '-'} | "
-            f"Полка: {row[shelf_idx] if shelf_idx else '-'} | "
-            f"Коробка: {row[box_idx] if box_idx else '-'}"
-        )
+    await query.edit_message_text(
+        f"{row[0]} | {row[1]} | {row[2]}\n📦 {row[5]}\n📊 Остаток: {row[7]}",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-        await query.message.reply_text(
-            text,
-            reply_markup=create_action_buttons(
-                row_index,
-                query.from_user.id == ADMIN_ID
-            )
-        )
+# --- ПОДТВЕРЖДЕНИЕ ---
+async def confirm_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-    # ===== СПИСАНИЕ =====
-    if data.startswith("minus_"):
-        if query.from_user.id != ADMIN_ID:
+    qty = int(query.data.split("_")[1])
+    row_index = context.user_data.get("selected_row")
+
+    context.user_data["sell_qty"] = qty
+
+    keyboard = [
+        [InlineKeyboardButton("✅ Подтвердить", callback_data="confirm")],
+        [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+    ]
+
+    await query.edit_message_text(
+        f"Подтвердить списание {qty} шт?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# --- СПИСАНИЕ ---
+async def do_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    row_index = context.user_data.get("selected_row")
+    qty = context.user_data.get("sell_qty")
+
+    data = sheet_main.get_all_values()
+    row = data[row_index - 1]
+
+    with lock:
+        sold = int(row[6])
+        stock = int(row[7])
+
+        if stock < qty:
+            await query.edit_message_text("❌ Недостаточно товара")
             return
 
-        row_index = int(data.split("_")[1])
+        new_sold = sold + qty
+        new_stock = stock - qty
 
-        stock_idx = get_index(headers, "Количество")
-        current = int(sheet.cell(row_index, stock_idx + 1).value)
+        sheet_main.batch_update([
+            {"range": f"G{row_index}", "values": [[new_sold]]},
+            {"range": f"H{row_index}", "values": [[new_stock]]}
+        ])
 
-        if current > 0:
-            sheet.update_cell(row_index, stock_idx + 1, current - 1)
+        sheet_sales.append_row([
+            row[0], row[1], row[2], qty, row[5]
+        ])
 
-        await query.message.reply_text("Списано 1 ✅")
+    await query.edit_message_text(
+        f"✅ Списано {qty}\nОстаток: {new_stock}"
+    )
 
-# ===== ЗАПУСК =====
-app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+# --- ОТМЕНА ---
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("❌ Отменено")
 
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-app.add_handler(CallbackQueryHandler(handle_buttons))
+# --- ОБРАБОТЧИК ---
+async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
 
-print("Бот запущен...")
+    if "Поиск" in text:
+        await search(update, context)
+    elif "Списание" in text:
+        await search(update, context)
+    else:
+        await handle_search(update, context)
+
+# --- MAIN ---
+app = ApplicationBuilder().token(TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
+
+app.add_handler(CallbackQueryHandler(select_item, pattern="^select_"))
+app.add_handler(CallbackQueryHandler(confirm_sell, pattern="^sell_"))
+app.add_handler(CallbackQueryHandler(do_sell, pattern="^confirm$"))
+app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
+
 app.run_polling()
